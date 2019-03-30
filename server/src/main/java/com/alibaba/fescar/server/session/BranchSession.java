@@ -27,6 +27,8 @@ import com.alibaba.fescar.core.model.BranchStatus;
 import com.alibaba.fescar.core.model.BranchType;
 import com.alibaba.fescar.server.lock.LockManagerFactory;
 import com.alibaba.fescar.server.store.SessionStorable;
+import com.alibaba.fescar.server.store.buffer.ByteBufferPool;
+import com.alibaba.fescar.server.store.buffer.ByteBufferPoolFactory;
 
 /**
  * The type Branch session.
@@ -268,42 +270,47 @@ public class BranchSession implements Lockable, Comparable<BranchSession>, Sessi
 
     @Override
     public byte[] encode() {
-        ByteBuffer byteBuffer = ByteBuffer.allocate(2048);
-        byteBuffer.putLong(transactionId);
-        byteBuffer.putLong(branchId);
-        if (null != resourceId) {
-            byte[] resourceIdBytes = resourceId.getBytes();
-            byteBuffer.putInt(resourceIdBytes.length);
-            byteBuffer.put(resourceIdBytes);
-        } else {
-            byteBuffer.putInt(0);
+        ByteBufferPool byteBufferPool = ByteBufferPoolFactory.THREAD_BYTEBUFFER_POOL;
+        ByteBuffer byteBuffer = byteBufferPool.borrowHeapBuffer(2048);
+        try {
+            byteBuffer.putLong(transactionId);
+            byteBuffer.putLong(branchId);
+            if (null != resourceId) {
+                byte[] resourceIdBytes = resourceId.getBytes();
+                byteBuffer.putInt(resourceIdBytes.length);
+                byteBuffer.put(resourceIdBytes);
+            } else {
+                byteBuffer.putInt(0);
+            }
+            if (null != lockKey) {
+                byte[] lockKeyBytes = lockKey.getBytes();
+                byteBuffer.putInt(lockKeyBytes.length);
+                byteBuffer.put(lockKeyBytes);
+            } else {
+                byteBuffer.putInt(0);
+            }
+            if (null != clientId) {
+                byte[] clientIdBytes = clientId.getBytes();
+                byteBuffer.putShort((short) clientIdBytes.length);
+                byteBuffer.put(clientIdBytes);
+            } else {
+                byteBuffer.putShort((short) 0);
+            }
+            if (null != applicationData) {
+                byte[] applicationDataBytes = applicationData.getBytes();
+                byteBuffer.putInt(applicationDataBytes.length);
+                byteBuffer.put(applicationDataBytes);
+            } else {
+                byteBuffer.putInt(0);
+            }
+            byteBuffer.put((byte) status.getCode());
+            byteBuffer.flip();
+            byte[] result = new byte[byteBuffer.limit()];
+            byteBuffer.get(result);
+            return result;
+        }finally {
+            byteBufferPool.returnHeapBuffer(byteBuffer);
         }
-        if (null != lockKey) {
-            byte[] lockKeyBytes = lockKey.getBytes();
-            byteBuffer.putInt(lockKeyBytes.length);
-            byteBuffer.put(lockKeyBytes);
-        } else {
-            byteBuffer.putInt(0);
-        }
-        if (null != clientId) {
-            byte[] clientIdBytes = clientId.getBytes();
-            byteBuffer.putShort((short)clientIdBytes.length);
-            byteBuffer.put(clientIdBytes);
-        } else {
-            byteBuffer.putShort((short)0);
-        }
-        if (null != applicationData) {
-            byte[] applicationDataBytes = applicationData.getBytes();
-            byteBuffer.putInt(applicationDataBytes.length);
-            byteBuffer.put(applicationDataBytes);
-        } else {
-            byteBuffer.putInt(0);
-        }
-        byteBuffer.put((byte)status.getCode());
-        byteBuffer.flip();
-        byte[] result = new byte[byteBuffer.limit()];
-        byteBuffer.get(result);
-        return result;
     }
 
     @Override

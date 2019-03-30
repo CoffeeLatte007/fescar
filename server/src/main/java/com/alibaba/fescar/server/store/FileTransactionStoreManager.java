@@ -39,6 +39,8 @@ import com.alibaba.fescar.server.session.GlobalSession;
 import com.alibaba.fescar.server.session.SessionCondition;
 import com.alibaba.fescar.server.session.SessionManager;
 
+import com.alibaba.fescar.server.store.buffer.ByteBufferPool;
+import com.alibaba.fescar.server.store.buffer.ByteBufferPoolFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -299,23 +301,28 @@ public class FileTransactionStoreManager implements TransactionStoreManager {
 
         private boolean writeDataFile(byte[] bs) {
             int retry = 0;
-            byte[] byWrite = new byte[bs.length + 4];
-            ByteBuffer byteBuffer = ByteBuffer.wrap(byWrite);
-            byteBuffer.putInt(bs.length);
-            byteBuffer.put(bs);
-            for (; retry < MAX_WRITE_RETRY; retry++) {
-                try {
-                    byteBuffer.flip();
-                    while (byteBuffer.hasRemaining()) {
-                        currFileChannel.write(byteBuffer);
+            ByteBufferPool byteBufferPool = ByteBufferPoolFactory.THREAD_BYTEBUFFER_POOL;
+            ByteBuffer byteBuffer = byteBufferPool.borrowDirectBuffer(bs.length + 4);
+            try {
+                byteBuffer.putInt(bs.length);
+                byteBuffer.put(bs);
+                for (; retry < MAX_WRITE_RETRY; retry++) {
+                    try {
+                        byteBuffer.flip();
+                        while (byteBuffer.hasRemaining()) {
+                            currFileChannel.write(byteBuffer);
+                        }
+                        return true;
+                    } catch (IOException exx) {
+                        LOGGER.error("write data file error:" + exx.getMessage());
                     }
-                    return true;
-                } catch (IOException exx) {
-                    LOGGER.error("write data file error:" + exx.getMessage());
                 }
+                LOGGER.error("write dataFile failed,retry more than :" + MAX_WRITE_RETRY);
+                return false;
+            }finally {
+                byteBufferPool.returnDirectBuffer(byteBuffer);
             }
-            LOGGER.error("write dataFile failed,retry more than :" + MAX_WRITE_RETRY);
-            return false;
+
         }
 
         private void flushOnCondition() {

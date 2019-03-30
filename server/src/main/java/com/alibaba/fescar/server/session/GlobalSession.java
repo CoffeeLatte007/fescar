@@ -26,6 +26,8 @@ import com.alibaba.fescar.core.model.BranchType;
 import com.alibaba.fescar.core.model.GlobalStatus;
 import com.alibaba.fescar.server.UUIDGenerator;
 import com.alibaba.fescar.server.store.SessionStorable;
+import com.alibaba.fescar.server.store.buffer.ByteBufferPool;
+import com.alibaba.fescar.server.store.buffer.ByteBufferPoolFactory;
 
 /**
  * The type Global session.
@@ -366,36 +368,42 @@ public class GlobalSession implements SessionLifecycle, SessionStorable {
 
     @Override
     public byte[] encode() {
-        ByteBuffer byteBuffer = ByteBuffer.allocate(512);
-        byteBuffer.putLong(transactionId);
-        byteBuffer.putInt(timeout);
-        if (null != applicationId) {
-            byte[] byApplicationId = applicationId.getBytes();
-            byteBuffer.putShort((short)byApplicationId.length);
-            byteBuffer.put(byApplicationId);
-        } else {
-            byteBuffer.putShort((short)0);
+        ByteBufferPool byteBufferPool = ByteBufferPoolFactory.THREAD_BYTEBUFFER_POOL;
+        ByteBuffer byteBuffer = byteBufferPool.borrowHeapBuffer(512);
+        try {
+            byteBuffer.putLong(transactionId);
+            byteBuffer.putInt(timeout);
+            if (null != applicationId) {
+                byte[] byApplicationId = applicationId.getBytes();
+                byteBuffer.putShort((short) byApplicationId.length);
+                byteBuffer.put(byApplicationId);
+            } else {
+                byteBuffer.putShort((short) 0);
+            }
+            if (null != transactionServiceGroup) {
+                byte[] byServiceGroup = transactionServiceGroup.getBytes();
+                byteBuffer.putShort((short) byServiceGroup.length);
+                byteBuffer.put(byServiceGroup);
+            } else {
+                byteBuffer.putShort((short) 0);
+            }
+            if (null != transactionName) {
+                byte[] byTxName = transactionName.getBytes();
+                byteBuffer.putShort((short) byTxName.length);
+                byteBuffer.put(byTxName);
+            } else {
+                byteBuffer.putShort((short) 0);
+            }
+            byteBuffer.putLong(beginTime);
+            byteBuffer.put((byte) status.getCode());
+            byteBuffer.flip();
+            byte[] result = new byte[byteBuffer.limit()];
+            byteBuffer.get(result);
+            
+            return result;
+        }finally {
+            byteBufferPool.returnHeapBuffer(byteBuffer);
         }
-        if (null != transactionServiceGroup) {
-            byte[] byServiceGroup = transactionServiceGroup.getBytes();
-            byteBuffer.putShort((short)byServiceGroup.length);
-            byteBuffer.put(byServiceGroup);
-        } else {
-            byteBuffer.putShort((short)0);
-        }
-        if (null != transactionName) {
-            byte[] byTxName = transactionName.getBytes();
-            byteBuffer.putShort((short)byTxName.length);
-            byteBuffer.put(byTxName);
-        } else {
-            byteBuffer.putShort((short)0);
-        }
-        byteBuffer.putLong(beginTime);
-        byteBuffer.put((byte)status.getCode());
-        byteBuffer.flip();
-        byte[] result = new byte[byteBuffer.limit()];
-        byteBuffer.get(result);
-        return result;
     }
 
     @Override
