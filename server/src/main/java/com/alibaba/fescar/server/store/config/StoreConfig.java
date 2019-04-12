@@ -32,10 +32,16 @@ public class StoreConfig {
     private static final int DEFAULT_MAX_BRANCH_SESSION_SIZE = 1024 * 16;
 
     // default 512b
-    public static final int DEFAULT_MAX_GLOBAL_SESSION_SIZE = 512;
+    private static final int DEFAULT_MAX_GLOBAL_SESSION_SIZE = 512;
 
     // default 16kb
-    public static final int DEFAULT_WRITE_BUFFER_SIZE = 1024 * 16;
+    private static final int DEFAULT_WRITE_BUFFER_SIZE = 1024 * 16;
+
+    private static final int DEFAULT_MAX_FLUSH_NUM = 10;
+
+    private static final int DEFAULT_MAX_FLUSH_TIME_MILLS = 2 * 1000;
+
+
 
     public static int getMaxBranchSessionSize() {
         return CONFIGURATION.getInt(STORE_PREFIX + "max-branch-session-size", DEFAULT_MAX_BRANCH_SESSION_SIZE);
@@ -47,5 +53,13 @@ public class StoreConfig {
 
     public static int getFileWriteBufferCacheSize() {
         return CONFIGURATION.getInt(STORE_PREFIX + "file-write-buffer-cache-size", DEFAULT_WRITE_BUFFER_SIZE);
+    }
+
+    public static int getMaxFlushNum() {
+        return CONFIGURATION.getInt(STORE_PREFIX + "max-flush-num", DEFAULT_WRITE_BUFFER_SIZE);
+    }
+
+    public static int getMaxFlushTimeMills() {
+        return CONFIGURATION.getInt(STORE_PREFIX + "max-flush-time-mills", DEFAULT_MAX_FLUSH_TIME_MILLS);
     }
 }
