@@ -16,23 +16,7 @@
 
 package io.seata.core.rpc.netty;
 
-import java.io.IOException;
-import java.lang.management.ManagementFactory;
-import java.net.SocketAddress;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-
+import io.netty.channel.*;
 import io.seata.common.exception.FrameworkErrorCode;
 import io.seata.common.exception.FrameworkException;
 import io.seata.common.thread.NamedThreadFactory;
@@ -40,22 +24,18 @@ import io.seata.core.protocol.HeartbeatMessage;
 import io.seata.core.protocol.MergeMessage;
 import io.seata.core.protocol.MessageFuture;
 import io.seata.core.protocol.RpcMessage;
-
-import io.seata.core.rpc.Disposable;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelDuplexHandler;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandler;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelPromise;
-import io.seata.core.protocol.HeartbeatMessage;
-import io.seata.core.protocol.MergeMessage;
-import io.seata.core.protocol.MessageFuture;
-import io.seata.core.protocol.RpcMessage;
 import io.seata.core.rpc.Disposable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.net.SocketAddress;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.*;
 
 /**
  * The type Abstract rpc remoting.
@@ -138,8 +118,11 @@ public abstract class AbstractRpcRemoting extends ChannelDuplexHandler implement
                 }
 
                 for (MessageFuture messageFuture : timeoutMessageFutures) {
-                    futures.remove(messageFuture.getRequestMessage().getId());
+                    if (futures.remove(messageFuture.getRequestMessage().getId()) == null) {
+                        continue;
+                    }
                     messageFuture.setResultMessage(null);
+
                     if (LOGGER.isDebugEnabled()) {
                         LOGGER.debug("timeout clear future : " + messageFuture.getRequestMessage().getBody());
                     }
@@ -177,8 +160,8 @@ public abstract class AbstractRpcRemoting extends ChannelDuplexHandler implement
      * @return the object
      * @throws TimeoutException the timeout exception
      */
-    protected Object sendAsyncRequestWithResponse(String address, Channel channel, Object msg) throws TimeoutException {
-        return sendAsyncRequestWithResponse(address, channel, msg, NettyClientConfig.getRpcRequestTimeout());
+    protected Object sendSyncRequest(String address, Channel channel, Object msg) throws TimeoutException {
+        return sendSyncRequest(address, channel, msg, NettyClientConfig.getRpcRequestTimeout());
     }
 
     /**
@@ -191,12 +174,25 @@ public abstract class AbstractRpcRemoting extends ChannelDuplexHandler implement
      * @return the object
      * @throws TimeoutException the timeout exception
      */
-    protected Object sendAsyncRequestWithResponse(String address, Channel channel, Object msg, long timeout) throws
+    protected Object sendSyncRequest(String address, Channel channel, Object msg, long timeout) throws
         TimeoutException {
         if (timeout <= 0) {
             throw new FrameworkException("timeout should more than 0ms");
         }
-        return sendAsyncRequest(address, channel, msg, timeout);
+        final MessageFuture messageFuture = sendRequest(address, channel, msg, timeout, null);
+        if (messageFuture == null) {
+            return null;
+        }
+        try {
+            return messageFuture.get(timeout, TimeUnit.MILLISECONDS);
+        } catch (Exception exx) {
+            LOGGER.error("wait response error:" + exx.getMessage() + ",ip:" + address + ",request:" + msg);
+            if (exx instanceof TimeoutException) {
+                throw (TimeoutException) exx;
+            } else {
+                throw new RuntimeException(exx);
+            }
+        }
     }
 
     /**
@@ -208,15 +204,14 @@ public abstract class AbstractRpcRemoting extends ChannelDuplexHandler implement
      * @return the object
      * @throws TimeoutException the timeout exception
      */
-    protected Object sendAsyncRequestWithoutResponse(String address, Channel channel, Object msg) throws
-        TimeoutException {
-        return sendAsyncRequest(address, channel, msg, 0);
+    protected void sendAsyncRequest(String address, Channel channel, Object msg, long timeout, AsyncCallBack callBack) {
+        sendRequest(address, channel, msg, timeout, callBack);
     }
 
-    private Object sendAsyncRequest(String address, Channel channel, Object msg, long timeout)
-        throws TimeoutException {
+
+    private MessageFuture sendRequest(String address, Channel channel, Object msg, long timeout, AsyncCallBack callBack) {
         if (channel == null) {
-            LOGGER.warn("sendAsyncRequestWithResponse nothing, caused by null channel.");
+            LOGGER.warn("sendSyncRequest nothing, caused by null channel.");
             return null;
         }
         final RpcMessage rpcMessage = new RpcMessage();
@@ -229,6 +224,7 @@ public abstract class AbstractRpcRemoting extends ChannelDuplexHandler implement
         final MessageFuture messageFuture = new MessageFuture();
         messageFuture.setRequestMessage(rpcMessage);
         messageFuture.setTimeout(timeout);
+        messageFuture.setCallBack(callBack);
         futures.put(rpcMessage.getId(), messageFuture);
 
         if (address != null) {
@@ -264,20 +260,7 @@ public abstract class AbstractRpcRemoting extends ChannelDuplexHandler implement
                 }
             });
         }
-        if (timeout > 0) {
-            try {
-                return messageFuture.get(timeout, TimeUnit.MILLISECONDS);
-            } catch (Exception exx) {
-                LOGGER.error("wait response error:" + exx.getMessage() + ",ip:" + address + ",request:" + msg);
-                if (exx instanceof TimeoutException) {
-                    throw (TimeoutException)exx;
-                } else {
-                    throw new RuntimeException(exx);
-                }
-            }
-        } else {
-            return null;
-        }
+        return messageFuture;
     }
 
     /**

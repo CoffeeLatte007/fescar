@@ -17,6 +17,7 @@
 package io.seata.core.protocol;
 
 import io.seata.common.exception.ShouldNeverHappenException;
+import io.seata.core.rpc.netty.AsyncCallBack;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -35,6 +36,7 @@ public class MessageFuture {
     private long start = System.currentTimeMillis();
     private static final Object NULL = new Object();
     private transient CompletableFuture origin = new CompletableFuture();
+    private AsyncCallBack callBack;
 
     /**
      * Is timeout boolean.
@@ -81,6 +83,18 @@ public class MessageFuture {
      */
     public void setResultMessage(Object obj) {
         origin.complete(obj);
+        doCallBack(obj);
+    }
+
+    private void doCallBack(Object obj) {
+        if (callBack == null) {
+            return;
+        }
+        if (obj instanceof Throwable) {
+            callBack.operationCaught((Throwable) obj);
+        } else {
+            callBack.operationComplete(obj);
+        }
     }
 
     /**
@@ -117,5 +131,9 @@ public class MessageFuture {
      */
     public void setTimeout(long timeout) {
         this.timeout = timeout;
+    }
+
+    public void setCallBack(AsyncCallBack callBack) {
+        this.callBack = callBack;
     }
 }

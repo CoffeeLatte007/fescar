@@ -219,7 +219,7 @@ public class RpcServer extends AbstractRpcRemotingServer implements ServerMessag
                 + ",clientId:" + clientId);
 
         }
-        return sendAsyncRequestWithResponse(null, clientChannel, message, timeout);
+        return sendSyncRequest(null, clientChannel, message, timeout);
     }
 
     /**

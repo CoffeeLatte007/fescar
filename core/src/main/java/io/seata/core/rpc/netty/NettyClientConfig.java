@@ -214,9 +214,9 @@ public class NettyClientConfig extends NettyBaseConfig {
     }
 
     /**
-     * Gets rpc sendAsyncRequestWithResponse time out.
+     * Gets rpc sendSyncRequest time out.
      *
-     * @return the rpc sendAsyncRequestWithResponse time out
+     * @return the rpc sendSyncRequest time out
      */
     public static int getRpcRequestTimeout() {
         return RPC_REQUEST_TIMEOUT;

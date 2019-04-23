@@ -22,7 +22,6 @@ import io.seata.common.exception.FrameworkException;
 import io.seata.common.util.NetUtil;
 import io.seata.core.protocol.RegisterRMResponse;
 import io.seata.core.protocol.RegisterTMResponse;
-import io.seata.core.rpc.netty.NettyPoolKey.TransactionRole;
 
 import io.netty.channel.Channel;
 import org.apache.commons.pool.KeyedPoolableObjectFactory;
@@ -66,7 +65,7 @@ public class NettyPoolableFactory implements KeyedPoolableObjectFactory<NettyPoo
                 "register msg is null, role:" + key.getTransactionRole().name());
         }
         try {
-            response = rpcRemotingClient.sendAsyncRequestWithResponse(null, tmpChannel, key.getMessage());
+            response = rpcRemotingClient.sendSyncRequest(null, tmpChannel, key.getMessage());
             if (!isResponseSuccess(response, key.getTransactionRole())) {
                 rpcRemotingClient.onRegisterMsgFail(key.getAddress(), tmpChannel, response, key.getMessage());
             } else {

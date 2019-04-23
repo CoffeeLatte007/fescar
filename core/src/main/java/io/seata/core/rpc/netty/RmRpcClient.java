@@ -16,17 +16,11 @@
 
 package io.seata.core.rpc.netty;
 
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
-
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandler.Sharable;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.timeout.IdleStateEvent;
+import io.netty.util.concurrent.EventExecutorGroup;
 import io.seata.common.exception.FrameworkErrorCode;
 import io.seata.common.exception.FrameworkException;
 import io.seata.common.thread.NamedThreadFactory;
@@ -37,20 +31,14 @@ import io.seata.core.protocol.AbstractMessage;
 import io.seata.core.protocol.HeartbeatMessage;
 import io.seata.core.protocol.RegisterRMRequest;
 import io.seata.core.protocol.RegisterRMResponse;
-import io.seata.core.rpc.netty.NettyPoolKey.TransactionRole;
-
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandler.Sharable;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.handler.timeout.IdleStateEvent;
-import io.netty.util.concurrent.EventExecutorGroup;
-import io.seata.core.protocol.AbstractMessage;
-import io.seata.core.protocol.HeartbeatMessage;
-import io.seata.core.protocol.RegisterRMRequest;
-import io.seata.core.protocol.RegisterRMResponse;
 import org.apache.commons.pool.impl.GenericKeyedObjectPool.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static io.seata.common.Constants.DBKEYS_SPLIT_CHAR;
 
@@ -200,12 +188,12 @@ public final class RmRpcClient extends AbstractRpcRemotingClient {
     public Object sendMsgWithResponse(Object msg, long timeout) throws TimeoutException {
         String validAddress = loadBalance(transactionServiceGroup);
         Channel acquireChannel = connect(validAddress);
-        return super.sendAsyncRequestWithResponse(validAddress, acquireChannel, msg, timeout);
+        return super.sendSyncRequest(validAddress, acquireChannel, msg, timeout);
     }
 
     @Override
     public Object sendMsgWithResponse(String serverAddress, Object msg, long timeout) throws TimeoutException {
-        return super.sendAsyncRequestWithResponse(serverAddress, connect(serverAddress), msg, timeout);
+        return super.sendSyncRequest(serverAddress, connect(serverAddress), msg, timeout);
     }
 
     @Override
@@ -358,23 +346,21 @@ public final class RmRpcClient extends AbstractRpcRemotingClient {
 
     private void sendRegisterMessage(String serverAddress, Channel channel, String dbKey) {
         RegisterRMRequest message = new RegisterRMRequest(applicationId,
-            transactionServiceGroup);
+                transactionServiceGroup);
         message.setResourceIds(dbKey);
-        try {
-            super.sendAsyncRequestWithoutResponse(null, channel, message);
-        } catch (FrameworkException e) {
-            if (e.getErrcode() == FrameworkErrorCode.ChannelIsNotWritable
-                && serverAddress != null) {
-                releaseChannel(channel, serverAddress);
-                if (LOGGER.isInfoEnabled()) {
-                    LOGGER.info("remove channel:" + channel);
+        super.sendAsyncRequest(null, channel, message, NettyClientConfig.getRpcRequestTimeout(), new AsyncCallBack() {
+            @Override
+            public void operationComplete(Object completeResponse) {
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("sendRegisterMessage response :{}", completeResponse);
                 }
-            } else {
-                LOGGER.error("", "register failed", e);
             }
-        } catch (TimeoutException e) {
-            LOGGER.error(e.getMessage());
-        }
+
+            @Override
+            public void operationCaught(Throwable exception) {
+                LOGGER.error("operationCaught exception", exception);
+            }
+        });
     }
 
     /**

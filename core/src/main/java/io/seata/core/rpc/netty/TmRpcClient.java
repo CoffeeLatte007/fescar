@@ -39,7 +39,6 @@ import io.seata.core.protocol.RegisterTMRequest;
 import io.seata.core.protocol.RegisterTMResponse;
 import io.seata.core.protocol.ResultCode;
 import io.seata.core.protocol.transaction.GlobalBeginResponse;
-import io.seata.core.rpc.netty.NettyPoolKey.TransactionRole;
 
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler.Sharable;
@@ -165,7 +164,7 @@ public final class TmRpcClient extends AbstractRpcRemotingClient {
     public Object sendMsgWithResponse(Object msg, long timeout) throws TimeoutException {
         String validAddress = loadBalance(transactionServiceGroup);
         Channel acquireChannel = connect(validAddress);
-        Object result = super.sendAsyncRequestWithResponse(validAddress, acquireChannel, msg, timeout);
+        Object result = super.sendSyncRequest(validAddress, acquireChannel, msg, timeout);
         if (result instanceof GlobalBeginResponse
                 && ((GlobalBeginResponse) result).getResultCode() == ResultCode.Failed) {
             LOGGER.error("begin response error,release channel:" + acquireChannel);
@@ -182,7 +181,7 @@ public final class TmRpcClient extends AbstractRpcRemotingClient {
     @Override
     public Object sendMsgWithResponse(String serverAddress, Object msg, long timeout)
         throws TimeoutException {
-        return sendAsyncRequestWithResponse(serverAddress, connect(serverAddress), msg, timeout);
+        return sendSyncRequest(serverAddress, connect(serverAddress), msg, timeout);
     }
 
     @Override
